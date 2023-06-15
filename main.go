@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"wakuparser/parser"
+	metrics "wakuparser/prometheus"
 
 	"github.com/acarl005/stripansi"
 	"github.com/docker/docker/api/types"
@@ -52,6 +53,7 @@ func main() {
 	time.Sleep(1 * time.Second) // dirty way to avoid detecting mesg received before sent. may need some extra chekds
 	go storeReceived(cli, msgStats)
 	go runEvery(msgStats, 10)
+	metrics.RunMetrics(8080)
 
 	for {
 		//dirty way of keeping the main running
@@ -77,6 +79,10 @@ func runEvery(msgStats *parser.MessageStats, tickerTimeInSeconds int64) {
 					"avgDelayMicrosecs": stat.AvgDelay.Microseconds(),
 					"container":         container,
 				}).Info("Stats")
+
+				metrics.AverageDelay.WithLabelValues(container).Set(float64(stat.AvgDelay.Microseconds()))
+				metrics.SentMessages.WithLabelValues(container).Set(float64(stat.MsgSent))
+				metrics.ReceivedMessages.WithLabelValues(container).Set(float64(stat.MsgReceived))
 			}
 
 			log.Info("total msg pending: ", msgStats.TotalMessages())
