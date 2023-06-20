@@ -9,7 +9,8 @@ import (
 )
 
 func Test_TODO2(t *testing.T) {
-	msgStats := NewMessageStats([]string{"nwaku-1", "nwaku-2", "nwaku-3"})
+	timeoutMessagesMiliSec := uint64(10 * 1000)
+	msgStats := NewMessageStats([]string{"nwaku-1", "nwaku-2", "nwaku-3"}, timeoutMessagesMiliSec)
 	// Some messages are sent
 	for i := 0; i < 100; i++ {
 		msg := NewMessage(
@@ -44,7 +45,8 @@ func Test_TODO2(t *testing.T) {
 func Test_TODO(t *testing.T) {
 	require.Equal(t, uint64(1), uint64(1))
 
-	msgStats := NewMessageStats([]string{"nwaku-1", "nwaku-2", "nwaku-3"})
+	timeoutMessagesMiliSec := uint64(10 * 1000)
+	msgStats := NewMessageStats([]string{"nwaku-1", "nwaku-2", "nwaku-3"}, timeoutMessagesMiliSec)
 
 	// 16Uiu2HAm8qbxAjtbcCuhP8msnGZvdK8RgHpdduDahUiCofi46AXj
 

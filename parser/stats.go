@@ -55,13 +55,13 @@ func NewMessage(hash string, timestampNs uint64, container string) *Message {
 
 // receivers is a list of containers that are interested in the messages
 // nwaku-1, nwaku-2, etc.
-func NewMessageStats(receivers []string) *MessageStats {
+func NewMessageStats(receivers []string, timeoutInMilSec uint64) *MessageStats {
 	return &MessageStats{
 		msgs:           make(map[string]*Message),
 		mutex:          sync.RWMutex{},
 		totalPeers:     0,
 		receivers:      receivers,
-		messageTimeout: time.Duration(5 * time.Second), // experiments
+		messageTimeout: time.Duration(timeoutInMilSec * uint64(time.Millisecond)), // experiments
 	}
 }
 
@@ -160,8 +160,11 @@ func (m *MessageStats) Stats() map[string]*IntervalStats {
 				}
 
 				stats[ack.container].MsgReceived++
-				// shit
-				stats[ack.container].AvgDelay = time.Duration(ApproxAverage(float64(stats[ack.container].AvgDelay.Nanoseconds()), float64(ack.time.Nanosecond()-msg.Timestamp.Nanosecond())) * float64(time.Nanosecond))
+				// TODO this is shit
+				oldAvgFloatNs := float64(stats[ack.container].AvgDelay.Nanoseconds())
+				newMasurementFloatNs := float64(ack.time.Nanosecond() - msg.Timestamp.Nanosecond())
+
+				stats[ack.container].AvgDelay = time.Duration(ApproxAverage(oldAvgFloatNs, newMasurementFloatNs))
 			}
 			// TODO: remove message
 			//msgCounted++

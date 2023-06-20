@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
+	"wakuparser/config"
 	"wakuparser/parser"
 	metrics "wakuparser/prometheus"
 
@@ -19,17 +23,28 @@ import (
 
 func main() {
 
-	nwakuInstances := make([]string, 0)
+	/*
+		nwakuReeplicas := 5
+		nwakuInstances := make([]string, 0)
+		for i := 0; i < nwakuReeplicas; i++ {
+			nwakuInstances = append(nwakuInstances, fmt.Sprintf("nwaku-simulator-nwaku-%d", i+1))
+		}
+	*/
 
-	nwakuReeplicas := 5
-	for i := 0; i < nwakuReeplicas; i++ {
-		nwakuInstances = append(nwakuInstances, "nwaku-simulator-nwaku-"+strconv.Itoa(i+1))
+	cliCfg, err := config.NewCliConfig()
+	if err != nil {
+		log.Fatal("could not create cli config: ", err)
 	}
 
-	msgStats := parser.NewMessageStats(nwakuInstances)
+	// Set log-level
+	logLevel, err := log.ParseLevel(cliCfg.LogLevel)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.SetLevel(logLevel)
 
 	// if default doesnt work check "docker context list"
-	cli, err := client.NewClientWithOpts(client.WithHost("unix:///Users/alrevuelta/.docker/run/docker.sock"))
+	cli, err := client.NewClientWithOpts(client.WithHost(cliCfg.DockerHost))
 	if err != nil {
 		log.Fatal("could not create env client: ", err)
 	}
@@ -45,20 +60,47 @@ func main() {
 		//Filters filters.Args
 	})
 
-	//log.Info("containers: ", containers)
-	_ = containers
+	nwakuInstances := make([]string, 0)
+	for _, container := range containers {
+		if strings.Contains(container.Names[0], "nwaku-simulator-nwaku-") /* && container.State == "running"*/ {
+			// contains a leading / so we remove it
+			nwakuInstances = append(nwakuInstances, strings.Replace(container.Names[0], "/", "", -1))
+		}
+	}
+
+	log.Info("Monitoring the following containers:")
+	for _, container := range nwakuInstances {
+		log.Info("container: ", container)
+	}
+
+	msgStats := parser.NewMessageStats(nwakuInstances, cliCfg.TimeoutInMilisec)
 
 	// start first sent messages.
 	go storeSent(cli, msgStats)
-	time.Sleep(1 * time.Second) // dirty way to avoid detecting mesg received before sent. may need some extra chekds
+
+	// dirty way to avoid detecting mesg received before sent. may need some extra chekds
+	time.Sleep(1 * time.Second)
+
 	go storeReceived(cli, msgStats)
 	go runEvery(msgStats, 10)
+
 	metrics.RunMetrics(8080)
 
+	// Wait for signal.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	for {
-		//dirty way of keeping the main running
-		time.Sleep(1 * time.Second)
+		sig := <-sigCh
+
+		if sig == syscall.SIGINT || sig == syscall.SIGTERM {
+		}
+
+		if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == os.Interrupt || sig == os.Kill {
+			break
+		}
 	}
+
+	log.Info("Stopped ok")
 
 }
 
@@ -166,7 +208,7 @@ func storeReceived(cli *client.Client, msgStats *parser.MessageStats) {
 					msg := parser.NewMessage(hash, rxTimeUint64, container)
 
 					if !msgStats.WasMsgPublished(msg) {
-						time.Sleep(2 * time.Second)
+						time.Sleep(2 * time.Second) // TODO: revisit this, dirty was, can mess up timeout stats
 						log.Info("waiting")
 					}
 
@@ -243,4 +285,13 @@ func storeSent(cli *client.Client, msgStats *parser.MessageStats) {
 
 		}
 	}
+}
+
+func stringInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }
